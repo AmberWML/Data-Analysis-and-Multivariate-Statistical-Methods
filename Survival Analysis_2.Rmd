@@ -1,0 +1,218 @@
+---
+title: "630hw3"
+author: "Ruohan wang"
+date: "3/25/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+#1a
+library(survival)
+library(survminer)
+library(KMsurv)
+library(xtable)
+library(dplyr)
+data(hodg)
+
+#summary(hodg)
+#dtype is NHL=1 and HOD=2
+#gtype is ALLo = 1 Auto =2
+for(i in 1:43){
+  if(hodg$gtype[i] == 1 & hodg$dtype[i]==1){
+    hodg$combine[i] =1
+  }else if(hodg$gtype[i] == 1 & hodg$dtype[i]==2){
+    hodg$combine[i] =2
+  }else if(hodg$gtype[i] == 2 & hodg$dtype[i]==1){
+    hodg$combine[i] =3
+  }else if(hodg$gtype[i] == 2 & hodg$dtype[i]==2){
+    hodg$combine[i] =4
+  }
+}
+time = hodg$time
+delta = hodg$delta
+combine= as.factor(hodg$combine)
+
+#hodg
+cox <- coxph(Surv(time, delta) ~ combine,ties='breslow')
+summary(cox)
+```
+
+
+Since the exp(coef) is the hazard ratio. 
+
+The hazard ratio with NHL Allo and HOD Allo is 6.232290, p is 0.006739661. which is very small, so there is a difference exist between two groups. 
+
+The hazard ratio with NHL Allo and NHL Auto is 1.942291, p is 0.239389122 which is not small, so there is no difference exist between two groups.
+
+The hazard ratio with NHL Allo and HOD Auto is 1.942291, p is 0.794058239 which is not small, so there is no difference exist between two groups.
+
+CI for three groups are ( 1.6589, 23.414), (0.6427, 5.870), (0.3677, 3.698). which means there are 95 percent probability that the hazard ratio will between these.
+```{r}
+#1b
+## Score test
+round(summary(cox)$sctest, 4)
+## Wald test
+round(summary(cox)$waldtest, 4)
+## likelihood ratio test
+round(summary(cox)$logtest,4)
+```
+H0: beta2=beta3=beta4 = 0 
+Ha: at least one of them is not 0
+
+The three tests are different methods to test whether we should choose 
+null H0 or alternative Ha. since all three methods have the p-value <0.05
+which means significant. we choose to reject H0.
+
+```{r}
+#1c
+#likelihood test
+gtype=as.factor(hodg$gtype)
+dtype=as.factor(hodg$dtype)
+cox2 = coxph(Surv(time, delta) ~ gtype+dtype+gtype*dtype,ties='breslow')
+cox3 =  coxph(Surv(time, delta) ~ gtype+dtype,ties='breslow')
+## df=1 for gtype*dtype
+lrt <- 2*(cox2$loglik[2]-cox3$loglik[2])
+## The p-value of this test suggests that survival is different
+
+p = 1-pchisq(lrt, 1)
+p
+#wald
+var = cox2$var[3,3]
+m = t(cox2$coef[3])%*%solve(var)%*%cox2$coef[3]
+p2 = 1-pchisq(m,1)
+p2
+```
+
+since the p value for likelihood is 0.006690241< 0.05. Reject H0, which means there is survival difference between them.
+
+While the wald test shows that the 0.006006927 < 0,05. Reject H0, which means there is some survival difference between them.
+
+```{r}
+#1d
+summary(cox)
+```
+
+since the NHL Allo is the base line. The CI for NHL Auto is (0.6427,5.870).
+
+```{r}
+#1e
+c1 <- c(1,0,0)
+h1 =t(c1)%*%cox$var%*%c1
+k1= t(c1%*%cox$coef)%*%solve(h1)%*%(c1%*%cox$coef)
+print(1-pchisq(k1, 1))
+```
+
+Wald test: 
+
+H0: hazard(HOD_Allo)=hazard(NHL_Allo)
+Ha: hazard(HOD_Allo)!=hazard(NHL_Allo)
+
+Function:
+For NHL allo: h(t|xi) = h0(t)
+
+For HOD auto: h(t|xi) = h0(t)exp(beta1)
+
+The p-value is 0.006739661< 0.05. Reject H0, which means there is some survival difference between them.
+
+```{r}
+#1f
+c2 <- c(0,1,-1)
+h2 =t(c2)%*%cox$var%*%c2
+k2= t(c2%*%cox$coef)%*%solve(h2)%*%(c2%*%cox$coef)
+print(1-pchisq(k2, 1))
+```
+Wald test: 
+
+H0: hazard(HOD Auto)=hazard(NHL Auto )
+Ha: hazard(HOD Auto)!=hazard(NHL Auto )
+
+Function:
+For HOD Auto: h(t|xi) = h0(t)
+
+For NHL Auto: h(t|xi) = h0(t)exp(beta3)
+
+The p-value is 0.312685>0.05. Fail to reject H0, which means there is no survival difference between them.
+
+```{r}
+#1g
+c3 <- rbind(c(0,1,0),c(1,0,-1))
+k3= t(c3%*%cox$coef)%*%solve(c3%*%cox$var%*%t(c3))%*%(c3%*%cox$coef)
+print(1-pchisq(k3, 2))
+```
+
+At least one group are different using a two-degree of freedom test of 
+
+H0: h(t|N HLAllo) = h(t|N HLAuto)
+H0: h(t|HODAllo) = h(t|HODAuto)
+
+The p-value is 0.01429393<0.05. Reject H0, which means At least one group are different.
+
+```{r}
+#2a
+library(survival)
+library(survminer)
+library(KMsurv)
+library(xtable)
+library(dplyr)
+setwd("~/Downloads")
+data <- read.csv("leukemia.csv")
+
+ma <- data[data$sex==1, ]
+fe <- data[data$sex==0, ]
+# 
+# time=data$time
+# relapse= data$relapse
+# trt= data$trt
+# logWBC= data$logWBC
+reg1 <- coxph(Surv(time, relapse) ~ trt+logWBC, data = ma, ties = "breslow")
+summary(reg1)$coef
+reg2 <- coxph(Surv(time, relapse) ~ trt+logWBC, data = fe, ties = "breslow")
+summary(reg2)$coef
+```
+Compare the re-gression coefficients from Cox PH models for male and female patients. 
+
+For male group the hazard ratio for trt and logwbc are 0.155821 and 5.149590
+treatment group reduce the hazard by 0.155821 which means the trt is a good variable. similar, since HR of logWBC>1 so logWBC is not a good sign, and compared with male, female has stronger change. For female group the hazard ratio for trt and logwbc are 0.7658851 and 3.2223954
+
+
+```{r}
+#2b
+coxplot=survfit(coxph(Surv(time,relapse) ~ strata(trt) +logWBC + strata(sex), data = data))
+plot(coxplot,col=c(2,3,4,5), xlim=c(0, 35), lty=2, lwd=2, las=2,xlab="time", ylab="survival probability",legend.labs=c("female","male", "female_trt", "male_trt"))
+```
+
+
+From the plot we can tell the effect of treatment differ by gender. 
+
+```{r}
+#2c
+#data$sex=as.factor(data$sex)
+reg3 <- coxph(Surv(time, relapse) ~ trt + logWBC+strata(sex) , data = data, ties = "breslow" )
+log1 <- reg3$loglik[2]
+log2 <- reg1$loglik[2] + reg2$loglik[2]
+diff = 2*(log2 - log1)
+p2c<- 1-pchisq(diff,2)
+p2c
+```
+
+If we use breslow method. The p value is 0.1782153 and >0,05, we fail to reject h0. which means stratification by sex is a good choice by testing whether the
+effect of treatment and logWBC differ by sex.
+```{r}
+#2d
+summary(reg3)
+```
+
+h(t|X)= h0(t)exp(-0.931trt + 1.3902logWBC)
+
+h(t|X male_trt) = h0(t)exp(-0.931 + 1.3902logWBC)
+
+h(t|X male_con) = h0(t)exp(1.3902logWBC)
+
+hazard ratio for male = 0.3942
+
+female should be the same.
+
+
+

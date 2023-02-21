@@ -1,0 +1,265 @@
+---
+title: "630hw4"
+author: "Ruohan wang"
+date: "4/16/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+rm(list=ls(all=TRUE))
+library(survival)
+library(survminer)
+#install.packages("rms")
+library(rms)
+library(Hmisc)
+library(KMsurv)
+#' 1
+setwd("~/Downloads")
+df = read.csv("addicts.csv")
+cox.model =coxph(Surv(time, status) ~ clinic+prison+dose, data = df)
+summary(cox.model)
+dd <- datadist(df)
+options(datadist='dd')
+for(i in 3:8){
+  knot <- cph(Surv(time, status) ~ rcs(dose, i)+strat(clinic)+strat(prison), data=df)
+  print(AIC(knot))
+} 
+
+#since when knot number =3, the AIC is the smallest.
+cox.model2 <- cph(Surv(time, status) ~ rcs(dose, 3) +
+clinic+prison, data=df)
+anova(cox.model,cox.model2)
+```
+
+H0: linearity assumption on dose 
+
+Since the p value is 0.3354 > 0.05, which means fail to reject the h0, the does has linearity assumption.  so choose cox.model.
+
+```{r}
+#' 2
+##------------------------------------------
+## test PH
+##------------------------------------------
+ph_test <- cox.zph(cox.model, transform = "identity", global = TRUE)
+ph_test$table
+
+ph_test <- cox.zph(cox.model, transform = "km", global = TRUE)
+ph_test$table
+
+ph_test <- cox.zph(cox.model, transform = "rank", global = TRUE)
+ph_test$table
+
+#pdf("test PH.pdf", width=10, height=5)
+par(mfrow=c(1, 3))
+plot(ph_test)
+#dev.off()
+```
+
+H0: coxmodel1 obeys PH assumption
+
+From the above plots, we can see the dose fit the PH assumption, first, we can tell from the plots that only the time plot fit the 
+pattern of assumption, which displays around the 0. 
+
+Also the p value of clinic is significsnt so clinic is not valid for PH assumption. The prisona and dose obeys PH assumption.
+
+
+```{r}
+#'  3
+fit.1 <- survfit(Surv(time/365, status) ~ 1,
+                df[df$clinic==1, ]) 
+fit.2 <- survfit(Surv(time/365, status) ~ 1,
+                df[df$clinic==2, ])
+plot(fit.1$time, log(fit.1$cumhaz), type="l",
+     xlim = c(0,3), xlab="Time on study (Year)",
+     ylab="logH(t)", col=1, lwd=2, las=1)
+lines(fit.2$time, log(fit.2$cumhaz), col=2, lwd=2)
+legend("bottomright", lty=1, lwd=2, col=1:2,
+       c("Clinic 1", "Clinic 2"), bty = "n")
+```
+```{r}
+fit <- survfit(Surv(time/365, status) ~ clinic, data = df)
+cox <- coxph(Surv(time/365, status) ~ clinic, data = df)
+fit_cox <- survfit(cox, newdata = list(clinic=c(1,2)))
+plot(fit, col = 1:2, lwd=2, las=1, xlab="Year")
+lines(fit_cox, lwd=2, col=1:2, lty=2)
+legend("topright", lty=c(1,1,2,2), col=c(1,2,1,2),
+       c("Observed clinic=1", "Observed clinic=2",
+         "predicted clinic=1", "predicted clinic=2"),bty="n")
+```
+
+H0: clinic obeys PH assumption
+
+For first graph: if the two lines are parallel, then they obeys PH assumption. since they are not, so clinic not obeys PH assumption.
+
+For second graph: since the observed 2 and predicted 2 are not similar, as a result, clinic not obeys PH assumption.
+
+```{r}
+#' 4
+cox.model3 = coxph(Surv(time, status) ~ tt(clinic)+dose+prison, tt=function(x, t, ...){ifelse(t<=365, 0,x)},
+                ties = "breslow", data=df)
+summary(cox.model3)
+
+```
+
+H0: bata_ttclinic =0
+
+From above the CI for tt(clinic)x1 is (0.38292 ,1.0416),
+CI for tt(clinic)x1 is (0.07542,0.3424). The HR are 0.6316 and
+0.1607.  so the clinic 1 has bad performance compared with clinic 2.
+
+```{r}
+#' 5
+summary(cox.model3)
+```
+
+H0: bata_ttclinic =0
+
+Based on the change-point model, does the variable clinic satisfy the PH assumption. since the p for ttclinic is 2.30e-06< 0.05, so reject H0, so the variable clinic does noy satisfy the PH assumption.
+
+```{r}
+#' 6
+#Define the time-dependent variable as a linear function of time
+cox.model6 <- coxph(Surv(time, status) ~ clinic + tt(clinic)++ dose + prison, tt=function(x, t, ...) x*t, ties = "breslow",data=df)
+
+summary(cox.model6)
+n =c(100,300,500)
+for(i in 1:3){
+  t = n[i]
+  t2= t^2
+  b = cox.model6 $ coef[1]+ t*cox.model6$coef[2]
+  v = sqrt(cox.model6 $var[1 , 1] + t2 * cox.model6 $var[2 , 2]
+           +2 * t*cox.model6$var[1,2])
+  outcome = exp(c(b, b - qnorm(0.975)*v, b + qnorm(0.975)*v))
+  cat("t=",t)
+  print(outcome)
+  
+}
+```
+
+H0: bata_ttclinic =0
+
+since p value for ttclinic is 0.00143<0.05, so
+reject H0, so the variable clinic does not satisfy the PH assumption. then using loop for t =100 300 and 500 days. The HR, 95% CIs for the HRs at these time points are the outcome above.
+
+```{r}
+#' 7
+#install.packages("survRM2")
+library(survRM2)
+
+rmst_reg <- rmst2(time=df$time,status=df$status,arm=ifelse(df$clinic=="2", 1, 0),tau=800,covariates=df[, c(5,6)])
+rmst_reg
+```
+
+On the first 800 days of follow-up time, the between-group contrast 
+is 107.148 =108 days. So clinic 2 can live longer 108days than clinic1. And p = 0.008<0.05, so effect of clinic on survival is significant. 
+
+
+```{r}
+#' 8
+reg.exp <- survreg(Surv(time, status) ~ clinic + prison + dose,
+                dist = "exponential", data = df)
+reg.wei <- survreg(Surv(time, status) ~ clinic + prison + dose,
+                dist = "weibull", data = df)
+
+reg.logi <- survreg(Surv(time, status) ~ clinic + prison + dose,
+                dist = "loglogistic", data = df)
+reg.lono <- survreg(Surv(time, status) ~ clinic + prison + dose,
+                dist = "lognormal", data = df)
+summary(reg.exp)
+summary(reg.wei)
+summary(reg.logi)
+summary(reg.lono)
+
+AIC(reg.exp)
+AIC(reg.wei)
+AIC(reg.logi)
+AIC(reg.lono)
+```
+
+The all the predictor of interest(clinic, prison record, and methadone dose (mg/day)) in your model are above in aummary part.
+
+AIC for reg.wei model is the smallest, so the reg.wei mdoel is the best.
+
+```{r}
+#' 9
+# summary(reg.exp)
+lambda1 <- exp(-reg.exp$linear.predictors)
+s <- 1 - pexp(df$time, lambda1)
+cs_exp <- -log(s)
+fit1 <- survfit(Surv(cs_exp, df$status) ~ 1,
+              type = "fleming-harrington")
+plot(fit1, fun = "cumhaz", conf.int = F,
+     main="Exponential",
+     xlab="Cox-Snell Residuals",
+     ylab="H(t)",
+     xlim=c(0, 2.5), ylim=c(0, 3), las = 1, lwd = 3)
+abline(a=0, b=1, col=2, lwd = 3)
+# summary(reg.wei)
+lambda2 <- exp(-reg.wei$linear.predictors)
+alpha2 <- 1/reg.wei$scale
+q=-(lambda2 * df$time)**alpha2
+s2 <- exp(q)
+cs_exp2 <- -log(s2)
+fit2 <- survfit(Surv(cs_exp2, df$status) ~ 1,
+              type = "fleming-harrington")
+plot(fit2, fun = "cumhaz", conf.int = F,
+     main="Weibull",
+     xlab="Cox-Snell Residuals",
+     ylab="H(t)",
+     xlim=c(0, 2.5), ylim=c(0, 3), las = 1, lwd = 3)
+abline(a=0, b=1, col=2, lwd = 3)
+# summary(reg.logi) formula?
+lamda3<- exp(-reg.logi$linear.predictors)
+s3<-1/(1 + lamda3 * df$time)^(1 / reg.logi$scale)
+cs_exp3 <- -log(s3)
+fit3 <- survfit(Surv(cs_exp3, df$status) ~ 1, type = "fleming-harrington")
+plot(fit3, fun = "cumhaz", conf.int = F,
+     main="logistic model",
+     xlab="Cox-Snell Residuals",
+     ylab="H(t)",
+     xlim=c(0, 2.5), ylim=c(0, 2.5), las = 1, lwd = 3)
+abline(a = 0, b = 1, col = 2, lwd = 3)
+# summary(reg.lono)
+alpha4 <- 1 / reg.lono$scale
+cs_exp4<- -log(1 - pnorm(alpha4*log(df$time) - reg.lono$linear.predictors*alpha4))
+fit4<-survfit(Surv(cs_exp4, df$status) ~ 1,type = "fleming-harrington")
+plot(fit4, fun = "cumhaz", conf.int = F,
+     main="lognormal",
+     xlab="Cox-Snell Residuals",
+     ylab="H(t)",
+     xlim=c(0, 2.5), ylim=c(0, 3), las = 1, lwd = 3)
+abline(a=0, b=1, col=2, lwd = 3)
+```
+
+
+From the plots since the weibull has the most similar patterns of two lines, so weibull model is the best model.
+
+```{r}
+#' 10
+#reg.wei is the mode we choose
+#for clinic 1
+predict(reg.wei, newdata = data.frame(clinic=1,prison=1,
+                     dose=50), type = "quantile", p = 0.5, se.fit = T)
+predict(reg.wei, newdata = data.frame(clinic=2,prison=1,
+                     dose=50), type = "quantile", p = 0.5, se.fit = T)
+
+```
+
+Clinic 1's the median survival times is 254.2196 , 
+
+Clinic 1's the median survival times is 516.585.
+```{r}
+cat("Acceleration factor for c2 is",exp(-reg.wei$coefficients[2]))
+```
+
+The median survival times in c1 is 0.4921157 times of c2.
+
+
+```{r}
+summary(reg.wei)
+cat("hazard ratio of clinic 2 vs. clinic 1 based on the Weibull model is",exp(-0.70904/exp(-0.31495)))
+```
+
+The hazrad rate of c1 and c2 is 0.3785072.

@@ -1,0 +1,248 @@
+---
+title: "630_hw3_amber"
+author: "Ruohan wang"
+date: "3/6/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+#630 hw3
+#1 a
+setwd("~/Downloads")
+df1 = read.csv("pancreatic.csv")
+df1$entry_date = as.Date(df1$entry_date,"%m/%d/%y")
+df1$progression_date= as.Date(df1$progression_date,"%m/%d/%y")
+df1$death_date= as.Date(df1$death_date,"%m/%d/%y")
+#df1
+#estimate the median PFS in months using R
+PFS=c()
+for(i in 1:41){
+  if(is.na(df1$progression_date[i])==TRUE){
+    PFS[i] = df1$death_date[i] - df1$entry_date[i]
+  }else if(df1$progression_date[i] > df1$death_date[i]){
+    PFS[i] =  df1$death_date[i] - df1$entry_date[i]
+  }else if(df1$progression_date[i] < df1$death_date[i]){
+    PFS[i] = df1$progression_date[i] - df1$entry_date[i]
+  }
+} 
+PFS_month = PFS/30
+cbind(df1,PFS_month)
+month = median(PFS)/30
+month
+```
+
+Therefore the median PFS in months is 3.966667 months.
+
+```{r}
+#1b
+library(survival)
+library(survminer)
+
+df1$d3 <- 1
+fit <- survfit(Surv(PFS_month, df1$d3) ~ 1)
+breaks <- seq(6, 18, 6)
+hzd <- c(0.2, 0.15, 0.15, 0.18)
+t <- seq(0, 30, 0.01)
+# locate each element of t in breaks
+idx <- findInterval(t, breaks, left.open = T) + 1
+H <- cumsum(hzd[idx]*0.01)
+S <- exp(-H)
+par(mfrow = c(1,1), mar = c(4, 4, 1, 1))
+plot(fit, conf.int = FALSE, lwd = 2, lty = 1,
+     mark.time = T, las = 1, xlab = "Months",  ylab = "Survival")
+lines(t, S, col = 3, lwd = 2)
+abline(h = 0.5, col = "grey", lty = 2)
+```
+```{r}
+#1 c
+lamda = c(0.2, 0.15, 0.18)
+survdiff(Surv(PFS_month) ~ offset(exp(-(lamda[1]*PFS_month + (lamda[2]-lamda[1])*(PFS_month-6)*I(PFS_month > 6
+) + (lamda[3] - lamda[2])*(PFS_month - 18)*I(PFS_month>18)))), data = df1)
+```
+Since the p value is 0.571 and is greater than 0.05, so we fail to reject the null hypothesis.
+
+Therefore, there is no different from the survival curve of SOC.
+
+
+```{r}
+#3 a
+library(KMsurv)
+data("tongue")
+source("FH test.R")
+source("renyi.R")
+
+reg <- survdiff(Surv(time, delta) ~ type, rho = 0 , data = tongue) 
+
+p= 1- pchisq(q = reg$chisq, df = 1)
+p
+```
+The p value is 0.09 and is greater than 0,05, so this is large.
+
+Fail to reject H0, so survival rates of patients with cancer of the tongue for patients with aneuploid is the same as the patients with diploid tumors.
+
+```{r}
+#3 b
+reg.1 <- survdiff(Surv(time, delta) ~ type, rho = 1, data = tongue)
+p.1=1- pchisq(q = reg.1$chisq, df = 1)
+p.1
+```
+The p value is 0.069 and is greater than 0,05, so this is large.
+
+Fail to reject H0, so there is no evidence of detecting differences in survival rates be-
+tween the two types of cancers which occur soon after the diagnosis of the cancer.
+
+```{r}
+#3 c
+
+tongue$type_1 <- tongue$type - 1
+combo.test(t = tongue$time, delta = tongue$delta, x= tongue$type_1)
+```
+Since the p value is still larger than 0.05, so still fail to reject.
+
+```{r}
+#4 a
+data("kidtran")
+#kidtran
+reg4 <- survdiff(Surv(time, delta) ~ race+gender, kidtran)
+reg4
+fit4 <- survfit(Surv(time, delta) ~ race+gender, kidtran)
+ggsurvplot(fit4,  kidtran, title="survival curves",  xlab="Time",
+           ylab="Probability of Survival",
+           conf.int=F,  axes.offset=F,
+           xlim=c(0, 500), ylim=c(0.8, 1),
+           break.time.by=50,
+           risk.table=T, tables.height=0.3,
+           risk.table.title="Patients at Risk",
+           risk.table.y.text=F, fontsize=4,
+           tables.theme = theme_cleantable(),
+           legend=c(0.8, 1),  legend.title="",
+           legend.labs=c("white-male", "white-female", "black-male", "black-female"))
+```
+H0: white males, black males, white females, and black females four groups are the same.
+H1: white males, black males, white females, and black females four groups are not the same.
+
+The p value is 0.2 and is greater than 0,05, so this is large.
+
+Fail to reject H0, so white males, black males, white females, and black females four groups are the same.
+
+```{r}
+#4 b
+reg4.1<-survdiff(Surv(time, delta) ~ strata(gender) + race, data = kidtran)
+reg4.1
+```
+H0: The blacks have a higher mortality rate than whites Adjusting by stratification for the sex of the patient. 
+H1: The blacks have no higher mortality rate than whites Adjusting by stratification for the sex of the patient.
+
+The p value is 0.3 and is greater than 0,05, so this is large.
+
+Fail to reject H0, so The blacks have a higher mortality rate than whites Adjusting by stratification for the sex of the patient. 
+
+```{r}
+#4 c
+# Divide races
+male <- kidtran[which(kidtran$gender==1), ] #male
+female <- kidtran[which(kidtran$gender==2), ]
+# Visual inspection
+fit4c <- survfit(Surv(time, delta) ~ race, male)
+reg4c <- survdiff(Surv(time, delta) ~ race, male) 
+p4c <- 1-pchisq(reg4c$chisq, df=1)
+p4c
+
+fit4c2 <- survfit(Surv(time, delta) ~ race, female)
+reg4c2 <- survdiff(Surv(time, delta) ~ race, female) 
+p4c2 <- 1-pchisq(reg4c2$chisq, df=1)
+p4c2
+
+```
+
+H0: Black male/female have the same mortality as whites male/female. 
+HA: Blacks male/female have a higher mortality rate than whites male/female.
+
+The p value is 0.02768642. and is less than 0,05, so this is small
+
+Reject H0, so Blacks male/female have a higher mortality rate than whites male/female. 
+
+```{r}
+#4 c plot
+plot(fit4c, mark.time=T, col=1:2, lwd=2, xlim=c(0, 500), ylim=c(0.80, 1),
+     ylab="Probability of Survival", xlab="Time", las=1,
+     cex.axis=1.2, cex.lab=1.2, main="Female")
+legend("bottomleft", col=1:3, lwd=2, bty="n",
+       lty=1, c("White","Black"),
+       cex=1)
+
+plot(fit4c2, mark.time=T, col=1:2, lwd=2, xlim=c(0, 500), ylim=c(0.80, 1),
+     ylab="Probability of Survival", xlab="Time", las=1,
+     cex.axis=1.2, cex.lab=1.2, main="Female")
+legend("bottomleft", col=1:3, lwd=2, bty="n",
+       lty=1, c("White","Black"),
+       cex=1)
+```
+```{r}
+#4 d
+for (i in 1:nrow(kidtran)){
+  if (kidtran$age[i] <= 33){
+    kidtran$newage[i] = 1
+  }else if (kidtran$age[i] < 43 ){
+    kidtran$newage[i] = 2
+  }else if (kidtran$age[i] <= 54){
+    kidtran$newage[i] = 3
+  }else {
+    kidtran$newage[i] = 4
+} }
+reg4d <- survdiff(Surv(time, delta) ~ newage, rho = 0, data = kidtran)
+reg4d
+p4d = 1- pchisq(q = reg4d$chisq, df = 3)
+p4d
+```
+since the p value is 4.239487e-11 so this is very significant, then find which pairs are most significant:
+
+```{r}
+kid1<- kidtran[which(kidtran$newage==1) , ]
+kid2 <- kidtran[which(kidtran$newage==2) , ]
+kid3<- kidtran[which(kidtran$newage==3) , ]
+kid4 <- kidtran[which(kidtran$newage==4) , ]
+kid12<-rbind(kid1, kid2)
+reg12 <- survdiff(Surv(time, delta) ~ newage, kid12)
+p12 <- 1-pchisq(reg12$chisq, df=1)
+p12
+
+kid13<-rbind(kid1, kid3)
+reg13 <- survdiff(Surv(time, delta) ~ newage, kid13)
+p13 <- 1-pchisq(reg13$chisq, df=1)
+p13
+
+kid14<-rbind(kid1, kid4)
+reg14 <- survdiff(Surv(time, delta) ~ newage, kid14)
+p14 <- 1-pchisq(reg14$chisq, df=1)
+p14
+
+kid23<-rbind(kid2, kid3)
+reg23 <- survdiff(Surv(time, delta) ~ newage, kid23)
+p23 <- 1-pchisq(reg23$chisq, df=1)
+p23
+
+kid24<-rbind(kid2, kid4)
+reg24 <- survdiff(Surv(time, delta) ~ newage, kid24)
+p24 <- 1-pchisq(reg24$chisq, df=1)
+p24
+
+
+kid34<-rbind(kid3, kid4)
+reg34 <- survdiff(Surv(time, delta) ~ newage, kid34)
+p34 <- 1-pchisq(reg34$chisq, df=1)
+p34
+
+p.adjust(c(p12,p13,p14,p23,p24,p34), method = "bonferroni")
+```
+except the group 34 has pvalue of 0.05906735, all the others have the p value less than 0.05.
+
+So the group 34's age has significant difference in survival.
+
+After Bonferroni method, all the p values are above.
+
+
+
+
